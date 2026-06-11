@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: true
+
+      - name: Verify go.mod is tidy
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build ./...
+
+      - name: Unit tests
+        run: go test -race ./...
+
+  e2e:
+    name: End-to-end (live API)
+    runs-on: ubuntu-latest
+    # Only run the live e2e test when the API key secret is configured. On
+    # forks / PRs without access to the secret this job is skipped instead of
+    # failing.
+    if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: true
+
+      - name: Run e2e test
+        env:
+          GDELT_API_KEY: ${{ secrets.GDELT_API_KEY }}
+        run: |
+          if [ -z "$GDELT_API_KEY" ]; then
+            echo "GDELT_API_KEY secret not set; the e2e test will self-skip."
+          fi
+          go test -run TestE2E -v ./...
