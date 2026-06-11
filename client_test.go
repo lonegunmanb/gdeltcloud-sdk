@@ -68,7 +68,7 @@ func TestEventsRequestAndDecode(t *testing.T) {
 	if gotUA == "" {
 		t.Error("expected User-Agent header to be set")
 	}
-	wantContains := []string{"country=YEM%2CSAU", "start_date=2026-04-21", "end_date=2026-05-21", "limit=50", "include_images=false"}
+	wantContains := []string{"country=YEM%2CSAU", "date_start=2026-04-21", "date_end=2026-05-21", "limit=50", "include_images=false"}
 	for _, want := range wantContains {
 		if !containsSub(gotQuery, want) {
 			t.Errorf("query %q missing %q", gotQuery, want)

@@ -92,4 +92,38 @@ func TestE2E(t *testing.T) {
 		}
 		t.Logf("energy assets returned: %d", len(assets))
 	})
+
+	t.Run("events_summary", func(t *testing.T) {
+		buckets, err := client.EventsSummary(ctx, gdeltcloud.EventsSummaryParams{
+			GroupBy:   "country",
+			Country:   countries,
+			StartDate: startDate,
+			EndDate:   endDate,
+		})
+		if err != nil {
+			t.Fatalf("EventsSummary: %v", err)
+		}
+		t.Logf("event summary buckets returned: %d", len(buckets))
+	})
+
+	t.Run("stories_summary", func(t *testing.T) {
+		buckets, err := client.StoriesSummary(ctx, gdeltcloud.StoriesSummaryParams{
+			GroupBy:   "date",
+			Country:   countries,
+			StartDate: startDate,
+			EndDate:   endDate,
+		})
+		if err != nil {
+			t.Fatalf("StoriesSummary: %v", err)
+		}
+		t.Logf("story summary buckets returned: %d", len(buckets))
+	})
+
+	t.Run("geo_admin1", func(t *testing.T) {
+		admin1, err := client.GeoAdmin1(ctx, "France")
+		if err != nil {
+			t.Fatalf("GeoAdmin1: %v", err)
+		}
+		t.Logf("admin1 divisions returned for %s: %d", admin1.Country, len(admin1.Admin1))
+	})
 }

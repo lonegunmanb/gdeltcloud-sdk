@@ -7,9 +7,15 @@ It provides a small, typed client over the public GDELT Cloud endpoints:
 | Endpoint | Method | Description |
 | --- | --- | --- |
 | `/api/v2/events` | `Client.Events` | Generated events |
+| `/api/v2/events/{id}` | `Client.Event` | Fetch a single event by id |
+| `/api/v2/events/summary` | `Client.EventsSummary` | Grouped event aggregate buckets |
 | `/api/v2/stories` | `Client.Stories` | Story clusters |
+| `/api/v2/stories/{id}` | `Client.Story` | Fetch a single story cluster by id |
+| `/api/v2/stories/summary` | `Client.StoriesSummary` | Grouped story aggregate buckets |
 | `/api/v2/entities` | `Client.Entities` | Entities (people, organizations, places) |
+| `/api/v2/entities/{id}` | `Client.Entity` | Fetch a single entity by id |
 | `/api/v2/energy/assets` | `Client.EnergyAssets` | GEM-tracked energy assets in a bounding box |
+| `/api/v2/geo/admin1` | `Client.GeoAdmin1` | First-level administrative divisions of a country |
 
 Authentication uses a GDELT Cloud API key (format `gdelt_sk_...`) sent in the `Authorization` header using the `Bearer` scheme
 (i.e. `Authorization: Bearer gdelt_sk_...`). Get a key at
@@ -101,10 +107,21 @@ Provide your API key via the `GDELT_API_KEY` environment variable or the
 export GDELT_API_KEY=gdelt_sk_...
 
 gdelt events --country YEM,SAU --start 2026-04-21 --end 2026-05-21 --limit 50
+gdelt event --id conflict_20260417_example
+gdelt events-summary --group-by country --region "Middle East" --start 2026-04-01 --end 2026-04-17
 gdelt stories --country YEM --start 2026-05-01 --end 2026-05-07 --article-count-min 4
+gdelt story --id story_20260417_example
+gdelt stories-summary --group-by date --continent Asia --start 2026-04-01 --end 2026-04-17
 gdelt entities --search Houthi --start 2026-05-01 --end 2026-05-07 --include-images
+gdelt entity --id person:Example%20Person
 gdelt energy-assets --bbox 11.5,42.5,13.5,44.5 --tracker oil_gas_plants,lng_terminals
+gdelt admin1 --country France
 ```
+
+The `*-summary` commands aggregate matching records into grouped buckets;
+`--group-by` accepts `date`, `country`, `region`, `continent`, `category` or
+`subcategory`. Use `gdelt admin1 --country <name>` to discover the valid
+`--admin1` values before filtering events or stories by administrative division.
 
 Output is JSON (indented by default; use `--compact` for single-line). Run
 `gdelt help` for the full command list and `gdelt help <command>` (or

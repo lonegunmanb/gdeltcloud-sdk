@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -10,6 +11,13 @@ import (
 	"time"
 
 	gdeltcloud "github.com/lonegunmanb/gdeltcloud-sdk"
+)
+
+// Sentinel errors for missing required per-command flags.
+var (
+	errMissingID      = errors.New("an --id is required")
+	errMissingGroupBy = errors.New("a --group-by dimension is required (date|country|region|continent|category|subcategory)")
+	errMissingCountry = errors.New("a --country is required")
 )
 
 // commonFlags holds the global flags shared by every subcommand.
@@ -223,4 +231,174 @@ func isSet(fs *flag.FlagSet, name string) bool {
 		}
 	})
 	return found
+}
+
+func cmdEvent(args []string) int {
+	fs := flag.NewFlagSet("event", flag.ContinueOnError)
+	cf := registerCommon(fs)
+	id := fs.String("id", "", "event id to fetch (required)")
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Fetch a single event by its id from the GDELT Cloud API.\n\n"+
+			"USAGE:\n    gdelt event --id <event_id> [flags]\n\nFLAGS:\n")
+		fs.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\nEXAMPLE:\n    gdelt event --id conflict_20260417_example\n")
+	}
+
+	return runWithClient(fs, cf, args, func(ctx context.Context, c *gdeltcloud.Client) (any, error) {
+		if strings.TrimSpace(*id) == "" {
+			return nil, errMissingID
+		}
+		return c.Event(ctx, *id)
+	})
+}
+
+func cmdStory(args []string) int {
+	fs := flag.NewFlagSet("story", flag.ContinueOnError)
+	cf := registerCommon(fs)
+	id := fs.String("id", "", "story id to fetch (required)")
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Fetch a single story cluster by its id from the GDELT Cloud API.\n\n"+
+			"USAGE:\n    gdelt story --id <story_id> [flags]\n\nFLAGS:\n")
+		fs.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\nEXAMPLE:\n    gdelt story --id story_20260417_example\n")
+	}
+
+	return runWithClient(fs, cf, args, func(ctx context.Context, c *gdeltcloud.Client) (any, error) {
+		if strings.TrimSpace(*id) == "" {
+			return nil, errMissingID
+		}
+		return c.Story(ctx, *id)
+	})
+}
+
+func cmdEntity(args []string) int {
+	fs := flag.NewFlagSet("entity", flag.ContinueOnError)
+	cf := registerCommon(fs)
+	id := fs.String("id", "", "entity id to fetch (required)")
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Fetch a single entity by its id from the GDELT Cloud API.\n\n"+
+			"USAGE:\n    gdelt entity --id <entity_id> [flags]\n\nFLAGS:\n")
+		fs.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\nEXAMPLE:\n    gdelt entity --id person:Example%%20Person\n")
+	}
+
+	return runWithClient(fs, cf, args, func(ctx context.Context, c *gdeltcloud.Client) (any, error) {
+		if strings.TrimSpace(*id) == "" {
+			return nil, errMissingID
+		}
+		return c.Entity(ctx, *id)
+	})
+}
+
+func cmdEventsSummary(args []string) int {
+	fs := flag.NewFlagSet("events-summary", flag.ContinueOnError)
+	cf := registerCommon(fs)
+	groupBy := fs.String("group-by", "", "aggregation dimension: date|country|region|continent|category|subcategory (required)")
+	country := fs.String("country", "", "comma-separated country names/codes (e.g. France or YEM,SAU)")
+	region := fs.String("region", "", "region name (e.g. Middle East)")
+	continent := fs.String("continent", "", "continent name (e.g. Asia)")
+	admin1 := fs.String("admin1", "", "first-level administrative division (discover via 'gdelt admin1')")
+	bbox := fs.String("bbox", "", "bounding box lat_min,lon_min,lat_max,lon_max")
+	category := fs.String("category", "", "comma-separated event categories (e.g. Protests,INFRASTRUCTURE)")
+	subcategory := fs.String("subcategory", "", "sub-event type; requires --category")
+	start := fs.String("start", "", "inclusive start date, ISO format YYYY-MM-DD")
+	end := fs.String("end", "", "inclusive end date, ISO format YYYY-MM-DD")
+	hasFatalities := fs.Bool("has-fatalities", false, "limit to events with fatalities")
+	civilianTargeting := fs.Bool("civilian-targeting", false, "limit to conflict events targeting civilians")
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Aggregate events into grouped summary buckets.\n\n"+
+			"USAGE:\n    gdelt events-summary --group-by <dimension> [flags]\n\nFLAGS:\n")
+		fs.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\nEXAMPLE:\n    gdelt events-summary --group-by country --region \"Middle East\" --has-fatalities --start 2026-04-01 --end 2026-04-17\n")
+	}
+
+	return runWithClient(fs, cf, args, func(ctx context.Context, c *gdeltcloud.Client) (any, error) {
+		if strings.TrimSpace(*groupBy) == "" {
+			return nil, errMissingGroupBy
+		}
+		return c.EventsSummary(ctx, gdeltcloud.EventsSummaryParams{
+			GroupBy:              *groupBy,
+			Country:              splitCSV(*country),
+			Region:               *region,
+			Continent:            *continent,
+			Admin1:               *admin1,
+			Bbox:                 *bbox,
+			Category:             splitCSV(*category),
+			Subcategory:          *subcategory,
+			StartDate:            *start,
+			EndDate:              *end,
+			HasFatalities:        *hasFatalities,
+			HasHasFatalities:     isSet(fs, "has-fatalities"),
+			CivilianTargeting:    *civilianTargeting,
+			HasCivilianTargeting: isSet(fs, "civilian-targeting"),
+		})
+	})
+}
+
+func cmdStoriesSummary(args []string) int {
+	fs := flag.NewFlagSet("stories-summary", flag.ContinueOnError)
+	cf := registerCommon(fs)
+	groupBy := fs.String("group-by", "", "aggregation dimension: date|country|region|continent|category|subcategory (required)")
+	country := fs.String("country", "", "comma-separated country names/codes (e.g. France or YEM,SAU)")
+	region := fs.String("region", "", "region name (e.g. Middle East)")
+	continent := fs.String("continent", "", "continent name (e.g. Asia)")
+	admin1 := fs.String("admin1", "", "first-level administrative division (discover via 'gdelt admin1')")
+	bbox := fs.String("bbox", "", "bounding box lat_min,lon_min,lat_max,lon_max")
+	category := fs.String("category", "", "comma-separated linked-event categories")
+	subcategory := fs.String("subcategory", "", "linked sub-event type; requires --category")
+	start := fs.String("start", "", "inclusive start date, ISO format YYYY-MM-DD")
+	end := fs.String("end", "", "inclusive end date, ISO format YYYY-MM-DD")
+	articleCountMin := fs.Int("article-count-min", 0, "minimum article count per story cluster")
+	articleCountMax := fs.Int("article-count-max", 0, "maximum article count per story cluster")
+	hasEvents := fs.Bool("has-events", false, "limit to stories with at least one linked event")
+	hasFatalities := fs.Bool("has-fatalities", false, "limit to stories with linked fatal events")
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Aggregate story clusters into grouped summary buckets.\n\n"+
+			"USAGE:\n    gdelt stories-summary --group-by <dimension> [flags]\n\nFLAGS:\n")
+		fs.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\nEXAMPLE:\n    gdelt stories-summary --group-by date --continent Asia --start 2026-04-01 --end 2026-04-17\n")
+	}
+
+	return runWithClient(fs, cf, args, func(ctx context.Context, c *gdeltcloud.Client) (any, error) {
+		if strings.TrimSpace(*groupBy) == "" {
+			return nil, errMissingGroupBy
+		}
+		return c.StoriesSummary(ctx, gdeltcloud.StoriesSummaryParams{
+			GroupBy:          *groupBy,
+			Country:          splitCSV(*country),
+			Region:           *region,
+			Continent:        *continent,
+			Admin1:           *admin1,
+			Bbox:             *bbox,
+			Category:         splitCSV(*category),
+			Subcategory:      *subcategory,
+			StartDate:        *start,
+			EndDate:          *end,
+			ArticleCountMin:  *articleCountMin,
+			ArticleCountMax:  *articleCountMax,
+			HasEvents:        *hasEvents,
+			HasHasEvents:     isSet(fs, "has-events"),
+			HasFatalities:    *hasFatalities,
+			HasHasFatalities: isSet(fs, "has-fatalities"),
+		})
+	})
+}
+
+func cmdAdmin1(args []string) int {
+	fs := flag.NewFlagSet("admin1", flag.ContinueOnError)
+	cf := registerCommon(fs)
+	country := fs.String("country", "", "country to list administrative divisions for (required)")
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "List the first-level administrative divisions (states/provinces) of a country.\n\n"+
+			"USAGE:\n    gdelt admin1 --country <country> [flags]\n\nFLAGS:\n")
+		fs.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\nEXAMPLE:\n    gdelt admin1 --country France\n")
+	}
+
+	return runWithClient(fs, cf, args, func(ctx context.Context, c *gdeltcloud.Client) (any, error) {
+		if strings.TrimSpace(*country) == "" {
+			return nil, errMissingCountry
+		}
+		return c.GeoAdmin1(ctx, *country)
+	})
 }
