@@ -3,7 +3,7 @@
 // It provides a small, typed client over the public endpoints documented at
 // https://docs.gdeltcloud.com/api-reference/v2 (events, stories, entities and
 // energy assets). Authentication uses a GDELT Cloud API key (format
-// "gdelt_sk_...") sent as an HTTP ******
+// "gdelt_sk_...") sent as an HTTP Bearer token in the Authorization header.
 //
 // Basic usage:
 //
