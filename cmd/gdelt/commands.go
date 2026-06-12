@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -55,7 +56,33 @@ func usageError(fs *flag.FlagSet, msg string) int {
 }
 
 // emit writes v as JSON to stdout, honoring the --compact flag.
+//
+// When v is a json.RawMessage (the verbatim API response body returned by the
+// SDK's *Raw methods), it is re-formatted in place so the full documented
+// envelope — success, data, pagination, group_by, and every record field — is
+// preserved byte-for-byte without round-tripping through a lossy struct.
 func emit(cf *commonFlags, v any) int {
+	if raw, ok := v.(json.RawMessage); ok {
+		var buf bytes.Buffer
+		var err error
+		if cf.compact {
+			err = json.Compact(&buf, raw)
+		} else {
+			err = json.Indent(&buf, raw, "", "  ")
+		}
+		if err != nil {
+			// Fall back to emitting the raw bytes unchanged rather than failing.
+			buf.Reset()
+			buf.Write(raw)
+		}
+		buf.WriteByte('\n')
+		if _, err := os.Stdout.Write(buf.Bytes()); err != nil {
+			fmt.Fprintf(os.Stderr, "gdelt: writing output: %v\n", err)
+			return 1
+		}
+		return 0
+	}
+
 	enc := json.NewEncoder(os.Stdout)
 	if !cf.compact {
 		enc.SetIndent("", "  ")
@@ -119,6 +146,7 @@ func cmdEvents(args []string) int {
 	end := fs.String("end", "", "inclusive end date, ISO format YYYY-MM-DD")
 	domain := fs.String("domain", "", "filter by CAMEO+ domain (e.g. INFRASTRUCTURE)")
 	limit := fs.Int("limit", 0, "maximum number of records to return")
+	cursor := fs.String("cursor", "", "pagination cursor (pass next_cursor from a prior response)")
 	includeImages := fs.Bool("include-images", false, "include image enrichment in results")
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Query generated events from the GDELT Cloud API.\n\n"+
@@ -129,12 +157,13 @@ func cmdEvents(args []string) int {
 	}
 
 	return runWithClient(fs, cf, args, func(ctx context.Context, c *gdeltcloud.Client) (any, error) {
-		return c.Events(ctx, gdeltcloud.EventsParams{
+		return c.EventsRaw(ctx, gdeltcloud.EventsParams{
 			Country:          splitCSV(*country),
 			StartDate:        *start,
 			EndDate:          *end,
 			Domain:           *domain,
 			Limit:            *limit,
+			Cursor:           *cursor,
 			IncludeImages:    *includeImages,
 			HasIncludeImages: isSet(fs, "include-images"),
 		})
@@ -149,6 +178,7 @@ func cmdStories(args []string) int {
 	end := fs.String("end", "", "inclusive end date, ISO format YYYY-MM-DD")
 	articleCountMin := fs.Int("article-count-min", 0, "minimum article count per story cluster")
 	limit := fs.Int("limit", 0, "maximum number of records to return")
+	cursor := fs.String("cursor", "", "pagination cursor (pass next_cursor from a prior response)")
 	includeImages := fs.Bool("include-images", false, "include article sharing-image enrichment")
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Query story clusters from the GDELT Cloud API.\n\n"+
@@ -158,12 +188,13 @@ func cmdStories(args []string) int {
 	}
 
 	return runWithClient(fs, cf, args, func(ctx context.Context, c *gdeltcloud.Client) (any, error) {
-		return c.Stories(ctx, gdeltcloud.StoriesParams{
+		return c.StoriesRaw(ctx, gdeltcloud.StoriesParams{
 			Country:          splitCSV(*country),
 			StartDate:        *start,
 			EndDate:          *end,
 			ArticleCountMin:  *articleCountMin,
 			Limit:            *limit,
+			Cursor:           *cursor,
 			IncludeImages:    *includeImages,
 			HasIncludeImages: isSet(fs, "include-images"),
 		})
@@ -178,6 +209,7 @@ func cmdEntities(args []string) int {
 	start := fs.String("start", "", "inclusive start date, ISO format YYYY-MM-DD")
 	end := fs.String("end", "", "inclusive end date, ISO format YYYY-MM-DD")
 	limit := fs.Int("limit", 0, "maximum number of records to return")
+	cursor := fs.String("cursor", "", "pagination cursor (pass next_cursor from a prior response)")
 	includeImages := fs.Bool("include-images", false, "include Wikipedia thumbnail enrichment")
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Query entities (people, organizations, places) from the GDELT Cloud API.\n\n"+
@@ -187,12 +219,13 @@ func cmdEntities(args []string) int {
 	}
 
 	return runWithClient(fs, cf, args, func(ctx context.Context, c *gdeltcloud.Client) (any, error) {
-		return c.Entities(ctx, gdeltcloud.EntitiesParams{
+		return c.EntitiesRaw(ctx, gdeltcloud.EntitiesParams{
 			Search:           *search,
 			Country:          splitCSV(*country),
 			StartDate:        *start,
 			EndDate:          *end,
 			Limit:            *limit,
+			Cursor:           *cursor,
 			IncludeImages:    *includeImages,
 			HasIncludeImages: isSet(fs, "include-images"),
 		})
@@ -213,7 +246,7 @@ func cmdEnergyAssets(args []string) int {
 	}
 
 	return runWithClient(fs, cf, args, func(ctx context.Context, c *gdeltcloud.Client) (any, error) {
-		return c.EnergyAssets(ctx, gdeltcloud.EnergyAssetsParams{
+		return c.EnergyAssetsRaw(ctx, gdeltcloud.EnergyAssetsParams{
 			Bbox:    *bbox,
 			Tracker: splitCSV(*tracker),
 			Limit:   *limit,
@@ -248,7 +281,7 @@ func cmdEvent(args []string) int {
 		if strings.TrimSpace(*id) == "" {
 			return nil, errMissingID
 		}
-		return c.Event(ctx, *id)
+		return c.EventRaw(ctx, *id)
 	})
 }
 
@@ -267,7 +300,7 @@ func cmdStory(args []string) int {
 		if strings.TrimSpace(*id) == "" {
 			return nil, errMissingID
 		}
-		return c.Story(ctx, *id)
+		return c.StoryRaw(ctx, *id)
 	})
 }
 
@@ -286,7 +319,7 @@ func cmdEntity(args []string) int {
 		if strings.TrimSpace(*id) == "" {
 			return nil, errMissingID
 		}
-		return c.Entity(ctx, *id)
+		return c.EntityRaw(ctx, *id)
 	})
 }
 
@@ -316,7 +349,7 @@ func cmdEventsSummary(args []string) int {
 		if strings.TrimSpace(*groupBy) == "" {
 			return nil, errMissingGroupBy
 		}
-		return c.EventsSummary(ctx, gdeltcloud.EventsSummaryParams{
+		return c.EventsSummaryRaw(ctx, gdeltcloud.EventsSummaryParams{
 			GroupBy:              *groupBy,
 			Country:              splitCSV(*country),
 			Region:               *region,
@@ -363,7 +396,7 @@ func cmdStoriesSummary(args []string) int {
 		if strings.TrimSpace(*groupBy) == "" {
 			return nil, errMissingGroupBy
 		}
-		return c.StoriesSummary(ctx, gdeltcloud.StoriesSummaryParams{
+		return c.StoriesSummaryRaw(ctx, gdeltcloud.StoriesSummaryParams{
 			GroupBy:          *groupBy,
 			Country:          splitCSV(*country),
 			Region:           *region,
@@ -399,6 +432,6 @@ func cmdAdmin1(args []string) int {
 		if strings.TrimSpace(*country) == "" {
 			return nil, errMissingCountry
 		}
-		return c.GeoAdmin1(ctx, *country)
+		return c.GeoAdmin1Raw(ctx, *country)
 	})
 }

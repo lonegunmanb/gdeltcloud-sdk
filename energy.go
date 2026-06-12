@@ -2,6 +2,7 @@ package gdeltcloud
 
 import (
 	"context"
+	"encoding/json"
 	"net/url"
 )
 
@@ -41,4 +42,11 @@ func (c *Client) EnergyAssets(ctx context.Context, params EnergyAssetsParams) ([
 		return nil, err
 	}
 	return out, nil
+}
+
+// EnergyAssetsRaw fetches energy assets and returns the complete response body
+// verbatim, preserving the full success envelope and every documented record
+// field.
+func (c *Client) EnergyAssetsRaw(ctx context.Context, params EnergyAssetsParams) (json.RawMessage, error) {
+	return c.rawBody(ctx, "/api/v2/energy/assets", params.values())
 }

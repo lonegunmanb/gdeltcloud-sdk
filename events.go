@@ -2,6 +2,7 @@ package gdeltcloud
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
@@ -23,6 +24,9 @@ type EventsParams struct {
 	Domain string
 	// Limit caps the number of returned records.
 	Limit int
+	// Cursor is the pagination cursor: pass the next_cursor value from a prior
+	// response's pagination block to fetch the next page.
+	Cursor string
 	// IncludeImages toggles image enrichment. Use the SetIncludeImages helper
 	// or set IncludeImages together with HasIncludeImages.
 	IncludeImages    bool
@@ -36,27 +40,41 @@ func (p EventsParams) values() url.Values {
 	setStr(v, "date_end", p.EndDate)
 	setStr(v, "domain", p.Domain)
 	setInt(v, "limit", p.Limit)
+	setStr(v, "cursor", p.Cursor)
 	setBool(v, "include_images", p.IncludeImages, p.HasIncludeImages)
 	return v
 }
 
-// Event is a single event returned by the events endpoint.
+// Event is a single event returned by the events endpoint. It models the
+// documented v2 Event card; callers that need byte-for-byte fidelity to the API
+// response (including any field not modeled here) can use EventsRaw / EventRaw.
 type Event struct {
-	ID          string        `json:"id,omitempty"`
-	EventUID    string        `json:"event_uid,omitempty"`
-	Title       string        `json:"title,omitempty"`
-	Summary     string        `json:"summary,omitempty"`
-	URL         string        `json:"url,omitempty"`
-	EventDate   string        `json:"event_date,omitempty"`
-	Date        string        `json:"date,omitempty"`
-	Category    string        `json:"category,omitempty"`
-	Subcategory string        `json:"subcategory,omitempty"`
-	Family      string        `json:"family,omitempty"`
-	EventFamily string        `json:"event_family,omitempty"`
-	Domain      string        `json:"domain,omitempty"`
-	ImageURL    string        `json:"image_url,omitempty"`
-	Geo         *Geo          `json:"geo,omitempty"`
-	Metrics     *EventMetrics `json:"metrics,omitempty"`
+	ID                     string        `json:"id,omitempty"`
+	EventUID               string        `json:"event_uid,omitempty"`
+	Title                  string        `json:"title,omitempty"`
+	Summary                string        `json:"summary,omitempty"`
+	URL                    string        `json:"url,omitempty"`
+	PrimaryStoryURL        string        `json:"primary_story_url,omitempty"`
+	EventDate              string        `json:"event_date,omitempty"`
+	Date                   string        `json:"date,omitempty"`
+	Category               string        `json:"category,omitempty"`
+	Subcategory            string        `json:"subcategory,omitempty"`
+	Family                 string        `json:"family,omitempty"`
+	EventFamily            string        `json:"event_family,omitempty"`
+	Domain                 string        `json:"domain,omitempty"`
+	EventCode              string        `json:"event_code,omitempty"`
+	ImageURL               string        `json:"image_url,omitempty"`
+	Geo                    *Geo          `json:"geo,omitempty"`
+	GeoContext             *GeoContext   `json:"geo_context,omitempty"`
+	Actors                 []Actor       `json:"actors,omitempty"`
+	Metrics                *EventMetrics `json:"metrics,omitempty"`
+	HasFatalities          *bool         `json:"has_fatalities,omitempty"`
+	Fatalities             *int          `json:"fatalities,omitempty"`
+	CivilianTargeting      *bool         `json:"civilian_targeting,omitempty"`
+	CivilianTargetingLabel string        `json:"civilian_targeting_label,omitempty"`
+	StoryRefs              []StoryRef    `json:"story_refs,omitempty"`
+	EntityRefs             []EntityRef   `json:"entity_refs,omitempty"`
+	TopArticles            []Article     `json:"top_articles,omitempty"`
 }
 
 // Events fetches events matching the given parameters.
@@ -66,6 +84,14 @@ func (c *Client) Events(ctx context.Context, params EventsParams) ([]Event, erro
 		return nil, err
 	}
 	return out, nil
+}
+
+// EventsRaw fetches events and returns the complete response body verbatim,
+// preserving the full success envelope (success, data and pagination) and every
+// documented record field. Use it when you need full fidelity to the v2 schema
+// or access to the pagination cursor.
+func (c *Client) EventsRaw(ctx context.Context, params EventsParams) (json.RawMessage, error) {
+	return c.rawBody(ctx, "/api/v2/events", params.values())
 }
 
 // Event fetches a single event by its v2 identifier
@@ -79,6 +105,15 @@ func (c *Client) Event(ctx context.Context, id string) (*Event, error) {
 		return nil, err
 	}
 	return &out, nil
+}
+
+// EventRaw fetches a single event by id and returns the complete response body
+// verbatim. See EventsRaw for why a caller might prefer the raw form.
+func (c *Client) EventRaw(ctx context.Context, id string) (json.RawMessage, error) {
+	if strings.TrimSpace(id) == "" {
+		return nil, fmt.Errorf("gdeltcloud: event id is required")
+	}
+	return c.rawBody(ctx, "/api/v2/events/"+url.PathEscape(id), nil)
 }
 
 // EventsSummaryParams are the query parameters for the events/summary endpoint.
@@ -141,4 +176,11 @@ func (c *Client) EventsSummary(ctx context.Context, params EventsSummaryParams) 
 		return nil, err
 	}
 	return out, nil
+}
+
+// EventsSummaryRaw fetches grouped event statistics and returns the complete
+// response body verbatim, preserving the success envelope, the top-level
+// group_by field and the full per-bucket statistics.
+func (c *Client) EventsSummaryRaw(ctx context.Context, params EventsSummaryParams) (json.RawMessage, error) {
+	return c.rawBody(ctx, "/api/v2/events/summary", params.values())
 }

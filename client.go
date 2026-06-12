@@ -130,9 +130,10 @@ func (e *APIError) Error() string {
 
 // envelope is the standard GDELT Cloud response wrapper.
 type envelope struct {
-	Success *bool           `json:"success"`
-	Error   string          `json:"error"`
-	Data    json.RawMessage `json:"data"`
+	Success    *bool           `json:"success"`
+	Error      string          `json:"error"`
+	Data       json.RawMessage `json:"data"`
+	Pagination json.RawMessage `json:"pagination"`
 }
 
 // do performs a GET request against path with the given query values, validates
@@ -203,4 +204,22 @@ func (c *Client) get(ctx context.Context, path string, query url.Values, out any
 		return fmt.Errorf("gdeltcloud: decode data: %w", err)
 	}
 	return nil
+}
+
+// rawBody performs a GET request against path with the given query values and
+// returns the complete, unmodified response body.
+//
+// Unlike get, which decodes only the "data" field into a typed value (and
+// therefore drops any field the target struct does not model), rawBody returns
+// the entire response envelope verbatim. Callers that need full fidelity to the
+// documented v2 schema — the success flag, the full data payload, the
+// pagination block, and any other top-level fields such as group_by — use this
+// to avoid silent data loss. HTTP and error-envelope failures are still surfaced
+// as *APIError by the shared do transport.
+func (c *Client) rawBody(ctx context.Context, path string, query url.Values) (json.RawMessage, error) {
+	body, _, err := c.do(ctx, path, query)
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(body), nil
 }
