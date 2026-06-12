@@ -2,6 +2,7 @@ package gdeltcloud
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
@@ -20,6 +21,9 @@ type StoriesParams struct {
 	ArticleCountMin int
 	// Limit caps the number of returned records.
 	Limit int
+	// Cursor is the pagination cursor: pass the next_cursor value from a prior
+	// response's pagination block to fetch the next page.
+	Cursor string
 	// IncludeImages toggles article sharing-image enrichment.
 	IncludeImages    bool
 	HasIncludeImages bool
@@ -32,25 +36,34 @@ func (p StoriesParams) values() url.Values {
 	setStr(v, "date_end", p.EndDate)
 	setInt(v, "article_count_min", p.ArticleCountMin)
 	setInt(v, "limit", p.Limit)
+	setStr(v, "cursor", p.Cursor)
 	setBool(v, "include_images", p.IncludeImages, p.HasIncludeImages)
 	return v
 }
 
-// Story is a single story cluster returned by the stories endpoint.
+// Story is a single story cluster returned by the stories endpoint. It models
+// the documented v2 Story card; callers that need byte-for-byte fidelity to the
+// API response can use StoriesRaw / StoryRaw.
 type Story struct {
-	ID          string        `json:"id,omitempty"`
-	ClusterID   string        `json:"cluster_id,omitempty"`
-	Label       string        `json:"label,omitempty"`
-	Title       string        `json:"title,omitempty"`
-	URL         string        `json:"url,omitempty"`
-	ClusterDate string        `json:"cluster_date,omitempty"`
-	StoryDate   string        `json:"story_date,omitempty"`
-	Category    string        `json:"category,omitempty"`
-	Subcategory string        `json:"subcategory,omitempty"`
-	ImageURL    string        `json:"image_url,omitempty"`
-	Geo         *Geo          `json:"geo,omitempty"`
-	Metrics     *StoryMetrics `json:"metrics,omitempty"`
-	TopArticles []Article     `json:"top_articles,omitempty"`
+	ID            string        `json:"id,omitempty"`
+	ClusterID     string        `json:"cluster_id,omitempty"`
+	Label         string        `json:"label,omitempty"`
+	Title         string        `json:"title,omitempty"`
+	URL           string        `json:"url,omitempty"`
+	ClusterDate   string        `json:"cluster_date,omitempty"`
+	StoryDate     string        `json:"story_date,omitempty"`
+	Category      string        `json:"category,omitempty"`
+	Subcategory   string        `json:"subcategory,omitempty"`
+	ImageURL      string        `json:"image_url,omitempty"`
+	Geo           *Geo          `json:"geo,omitempty"`
+	GeoContext    *GeoContext   `json:"geo_context,omitempty"`
+	Metrics       *StoryMetrics `json:"metrics,omitempty"`
+	HasEvents     *bool         `json:"has_events,omitempty"`
+	HasFatalities *bool         `json:"has_fatalities,omitempty"`
+	Fatalities    *int          `json:"fatalities,omitempty"`
+	LinkedEvents  []LinkedEvent `json:"linked_events,omitempty"`
+	EntityRefs    []EntityRef   `json:"entity_refs,omitempty"`
+	TopArticles   []Article     `json:"top_articles,omitempty"`
 }
 
 // Stories fetches story clusters matching the given parameters.
@@ -60,6 +73,13 @@ func (c *Client) Stories(ctx context.Context, params StoriesParams) ([]Story, er
 		return nil, err
 	}
 	return out, nil
+}
+
+// StoriesRaw fetches story clusters and returns the complete response body
+// verbatim, preserving the full success envelope (success, data and pagination)
+// and every documented record field.
+func (c *Client) StoriesRaw(ctx context.Context, params StoriesParams) (json.RawMessage, error) {
+	return c.rawBody(ctx, "/api/v2/stories", params.values())
 }
 
 // Story fetches a single story cluster by its v2 identifier
@@ -73,6 +93,15 @@ func (c *Client) Story(ctx context.Context, id string) (*Story, error) {
 		return nil, err
 	}
 	return &out, nil
+}
+
+// StoryRaw fetches a single story cluster by id and returns the complete
+// response body verbatim. See StoriesRaw for the rationale.
+func (c *Client) StoryRaw(ctx context.Context, id string) (json.RawMessage, error) {
+	if strings.TrimSpace(id) == "" {
+		return nil, fmt.Errorf("gdeltcloud: story id is required")
+	}
+	return c.rawBody(ctx, "/api/v2/stories/"+url.PathEscape(id), nil)
 }
 
 // StoriesSummaryParams are the query parameters for the stories/summary
@@ -137,4 +166,11 @@ func (c *Client) StoriesSummary(ctx context.Context, params StoriesSummaryParams
 		return nil, err
 	}
 	return out, nil
+}
+
+// StoriesSummaryRaw fetches grouped story statistics and returns the complete
+// response body verbatim, preserving the success envelope, the top-level
+// group_by field and the full per-bucket statistics.
+func (c *Client) StoriesSummaryRaw(ctx context.Context, params StoriesSummaryParams) (json.RawMessage, error) {
+	return c.rawBody(ctx, "/api/v2/stories/summary", params.values())
 }

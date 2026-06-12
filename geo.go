@@ -35,3 +35,15 @@ func (c *Client) GeoAdmin1(ctx context.Context, country string) (*Admin1, error)
 	}
 	return &out, nil
 }
+
+// GeoAdmin1Raw returns the complete /api/v2/geo/admin1 response body verbatim
+// (the top-level {success, country, admin1, source} payload), preserving every
+// field the API returns.
+func (c *Client) GeoAdmin1Raw(ctx context.Context, country string) (json.RawMessage, error) {
+	if strings.TrimSpace(country) == "" {
+		return nil, fmt.Errorf("gdeltcloud: country is required")
+	}
+	q := url.Values{}
+	q.Set("country", country)
+	return c.rawBody(ctx, "/api/v2/geo/admin1", q)
+}
