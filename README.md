@@ -88,6 +88,33 @@ if errors.As(err, &apiErr) {
 > **Note:** the events endpoint caps the date window at 30 days per call. For
 > longer windows, issue multiple calls and merge the results.
 
+### Full-fidelity responses and pagination
+
+The typed methods (`Events`, `Stories`, `Entities`, …) decode the documented v2
+record cards into Go structs and return a bare slice — convenient, but they
+expose neither the response `pagination` block nor any field the structs do not
+model. When you need byte-for-byte fidelity to the API (the full
+`{ success, data, pagination }` envelope, the summary `group_by` field, the
+pagination cursor, or any field not yet modeled), use the matching `*Raw`
+methods, which return the complete response body as `json.RawMessage`:
+
+```go
+raw, err := client.EventsRaw(ctx, gdeltcloud.EventsParams{
+	Country: []string{"IRN"},
+	Limit:   50,
+	Cursor:  "", // pass a prior response's pagination.next_cursor to page
+})
+if err != nil {
+	log.Fatal(err)
+}
+fmt.Printf("%s\n", raw) // verbatim {"success":...,"data":[...],"pagination":{...}}
+```
+
+`EventsRaw`, `StoriesRaw`, `EntitiesRaw`, `EnergyAssetsRaw`, `EventsSummaryRaw`,
+`StoriesSummaryRaw`, `EventRaw`, `StoryRaw`, `EntityRaw` and `GeoAdmin1Raw` all
+preserve the response unchanged. The list parameter structs accept a `Cursor`
+field that is sent as the `cursor` query parameter for paging.
+
 ## Command-line client
 
 The module ships a `gdelt` CLI under `cmd/gdelt`.
@@ -123,9 +150,32 @@ The `*-summary` commands aggregate matching records into grouped buckets;
 `subcategory`. Use `gdelt admin1 --country <name>` to discover the valid
 `--admin1` values before filtering events or stories by administrative division.
 
-Output is JSON (indented by default; use `--compact` for single-line). Run
-`gdelt help` for the full command list and `gdelt help <command>` (or
-`gdelt <command> -h`) for per-command flags.
+Output is the verbatim GDELT Cloud v2 response, faithful to the
+[documented schema](https://docs.gdeltcloud.com/api-reference/v2): list commands
+emit the full `{ "success", "data", "pagination" }` envelope (so `.data` and
+`pagination.next_cursor` work as documented), and every record field the API
+returns is preserved. JSON is indented by default; use `--compact` for
+single-line. Run `gdelt help` for the full command list and `gdelt help
+<command>` (or `gdelt <command> -h`) for per-command flags.
+
+To page through results, pass the `pagination.next_cursor` value from one
+response back via `--cursor` on the next call:
+
+```sh
+# first page
+gdelt events --country IRN --start 2026-06-01 --end 2026-06-12 --limit 50
+
+# next page, using the next_cursor from the previous response's pagination block
+gdelt events --country IRN --start 2026-06-01 --end 2026-06-12 --limit 50 --cursor 50
+```
+
+For example, in PowerShell the documented `.data` projection works directly:
+
+```powershell
+gdelt events --country IRN --start 2026-06-01 --end 2026-06-12 --limit 50 --compact `
+  | ConvertFrom-Json | Select-Object -ExpandProperty data
+```
+
 
 ## Testing
 
